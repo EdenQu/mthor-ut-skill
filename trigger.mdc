@@ -16,6 +16,8 @@ When user input matches any of these command patterns, activate the UT Skill wor
 | `ut_changed --base=<branch>` | Compare with specific base branch |
 | `ut_path --path=<dir>` | Generate UT for directory |
 | `ut_files --files="<files>"` | Generate UT for specific files |
+| `ut_run` | Run all changed UT files in current branch |
+| `ut_run --base=<branch>` | Run with specific base branch for comparison |
 
 ## Activation Rules
 
@@ -25,6 +27,7 @@ When ANY of these patterns are detected in user input:
 ^ut_changed(\s+.*)?$
 ^ut_path\s+(--)?path=.+
 ^ut_files\s+(--)?files=.+
+^ut_run(\s+.*)?$
 ```
 
 ## Workflow Execution
@@ -80,6 +83,12 @@ ut_path --path=phone/ios/Phone/Service
 
 # Test specific files
 ut_files --files="PhoneService.swift,CallManager.swift"
+
+# Run all changed UT files in current branch
+ut_run
+
+# Run with specific base branch
+ut_run --base=origin/main
 ```
 
 ## Important Notes

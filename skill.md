@@ -44,6 +44,7 @@ Use this skill when you need to:
 | `ut_changed` | Generate UT for git changed files | `ut_changed --base=origin/dev` |
 | `ut_path` | Generate UT for files in specified path | `ut_path --path=phone/ios/Phone/Service` |
 | `ut_files` | Generate UT for specific files | `ut_files --files="UserService.swift,AuthManager.swift"` |
+| `ut_run` | Run all changed UT files in current branch | `ut_run --base=origin/dev` |
 
 ## Process
 
@@ -181,12 +182,121 @@ TEST_F(ServiceTest, methodName_scenario_expectedResult) {
 }
 ```
 
+## ut_run Command
+
+The `ut_run` command runs all changed UT files (committed and uncommitted) in the current branch.
+
+### ut_run Workflow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ut_run --base=origin/dev                                        │
+└─────────────────────┬───────────────────────────────────────────┘
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Step 1: Detect Changed UT Files                                 │
+│  - git diff <base>...HEAD --name-only (committed changes)        │
+│  - git status --porcelain (uncommitted changes)                  │
+│  - Filter: *Tests.swift, *Test.kt, *_test.cpp                   │
+└─────────────────────┬───────────────────────────────────────────┘
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Step 2: Group by Platform                                       │
+│  - iOS: *Tests.swift                                             │
+│  - Android: *Test.kt                                             │
+│  - C++: *_test.cpp                                               │
+└─────────────────────┬───────────────────────────────────────────┘
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Step 3: iOS Pre-build (if iOS tests exist)                      │
+│  - Run: make ios_install_with_binary_cache                       │
+│  - Wait for completion (monitor output)                          │
+│  - Only proceed after successful completion                      │
+└─────────────────────┬───────────────────────────────────────────┘
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Step 4: Run Tests by Platform                                   │
+│  - iOS: xcodebuild test -only-testing:<TestTarget>/<TestClass>  │
+│  - Android: ./gradlew :module:testDebugUnitTest --tests "..."   │
+│  - C++: cmake --build && ./build/tests/<test>_test              │
+└─────────────────────┬───────────────────────────────────────────┘
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Step 5: Report Results                                          │
+│  - Show passed/failed count per platform                         │
+│  - List failed tests with details                                │
+│  - Total execution time                                          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### iOS Pre-build Requirement
+
+For iOS tests, `make ios_install_with_binary_cache` MUST complete before running tests:
+
+```bash
+# Step 1: Run make command and wait for completion
+cd app/ios/Glip
+make ios_install_with_binary_cache 2>&1 | tee /tmp/ios_install.log
+
+# Step 2: Check exit code
+if [ $? -eq 0 ]; then
+    echo "✅ iOS dependencies installed successfully"
+else
+    echo "❌ iOS dependency installation failed"
+    # Show error and stop
+    exit 1
+fi
+
+# Step 3: Only then run xcodebuild tests
+xcodebuild test -workspace Glip.xcworkspace ...
+```
+
+### Example ut_run Usage
+
+```
+User: ut_run
+
+AI: 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 ut_run Progress
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[✅] Step 1: Detect Changed UT Files     (2.1s)
+     Found 5 changed test files:
+     - iOS: 3 files
+     - Android: 1 file
+     - C++: 1 file
+
+[🔄] Step 2: iOS Pre-build               (in progress...)
+     Running: make ios_install_with_binary_cache
+     ...
+[✅] Step 2: iOS Pre-build               (45.2s)
+
+[🔄] Step 3: Run iOS Tests               (in progress...)
+     Running 3 test classes...
+[✅] Step 3: Run iOS Tests               (120.5s)
+     ✅ ConferenceInteractorTests: 75 passed
+     ✅ CallManagerTests: 42 passed
+     ✅ VoIPServiceTests: 28 passed
+
+[✅] Step 4: Run Android Tests           (15.3s)
+     ✅ UserServiceTest: 12 passed
+
+[✅] Step 5: Run C++ Tests               (8.7s)
+     ✅ config_parser_test: 18 passed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ All 175 tests passed!
+⏱️ Total Time: 191.8s
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
 ## Notes
 
 - Always reference existing passing tests before writing new code
 - When fixing errors, prioritize patterns from passing test cases
 - The skill tracks progress and timing for each workflow step
 - Compilation errors are never skipped - always analyzed and fixed
+- For `ut_run`, iOS pre-build is mandatory and must complete before tests run
 
 ## Installation
 
