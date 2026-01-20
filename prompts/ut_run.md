@@ -13,7 +13,14 @@
 | `--base` | No | `origin/dev` | Base branch for comparison |
 | `--platform` | No | `all` | Filter by platform: `ios`, `android`, `cpp`, `all` |
 
-## Workflow Steps
+## ⚠️ Critical Workflow Rules
+
+1. **ALL 6 STEPS MUST EXECUTE** - Never skip any step
+2. **COVERAGE IS MANDATORY** - Always collect and report branch + code coverage
+3. **NEVER END EARLY** - Complete entire workflow even if tests fail
+4. **TRACK TIMING** - Record time for each step
+
+## Workflow Steps (6 Steps Total)
 
 ### Step 1: Detect Changed UT Files
 
@@ -57,7 +64,8 @@ CPP_TESTS=$(echo "$ALL_UT_FILES" | grep "_test\.cpp$")
 if [ -n "$IOS_TESTS" ]; then
     echo "🍎 iOS tests detected. Running pre-build..."
     
-    cd app/ios/Glip
+    # Run from project root where Makefile is located
+    cd /path/to/project/root
     
     # Run make command and capture output
     echo "Running: make ios_install_with_binary_cache"
@@ -69,17 +77,18 @@ if [ -n "$IOS_TESTS" ]; then
     if [ $MAKE_EXIT_CODE -eq 0 ]; then
         echo "✅ iOS pre-build completed successfully"
     else
-        echo "❌ iOS pre-build failed with exit code: $MAKE_EXIT_CODE"
-        echo "Please check /tmp/ios_install.log for details"
-        # DO NOT proceed with tests
-        exit 1
+        echo "⚠️ iOS pre-build failed with exit code: $MAKE_EXIT_CODE"
+        echo "Attempting with existing build..."
+        # Continue with existing build - may work if dependencies already installed
     fi
 fi
 ```
 
-### Step 4: Run Tests
+### Step 4: Run Tests WITH Code Coverage
 
-#### iOS Tests
+**⚠️ CRITICAL: MUST enable code coverage when running tests**
+
+#### iOS Tests (with Coverage)
 
 ```bash
 for TEST_FILE in $IOS_TESTS; do
@@ -97,14 +106,17 @@ for TEST_FILE in $IOS_TESTS; do
     
     echo "Running: $TEST_TARGET/$TEST_CLASS"
     
+    # CRITICAL: Use -enableCodeCoverage YES and -resultBundlePath for coverage
     xcodebuild test \
         -workspace Glip.xcworkspace \
         -scheme $TEST_TARGET \
         -destination 'platform=iOS Simulator,name=iPhone 16' \
         -only-testing:$TEST_TARGET/$TEST_CLASS \
+        -enableCodeCoverage YES \
+        -resultBundlePath /tmp/ut_${TEST_CLASS}_result.xcresult \
         2>&1 | tee /tmp/ut_${TEST_CLASS}.log
     
-    # Parse results
+    # Parse test results
     if grep -q "Test Suite.*passed" /tmp/ut_${TEST_CLASS}.log; then
         PASSED_COUNT=$(grep "Executed.*tests" /tmp/ut_${TEST_CLASS}.log | tail -1 | grep -oE "[0-9]+ tests" | head -1)
         echo "✅ $TEST_CLASS: $PASSED_COUNT passed"
@@ -115,7 +127,7 @@ for TEST_FILE in $IOS_TESTS; do
 done
 ```
 
-#### Android Tests
+#### Android Tests (with Coverage)
 
 ```bash
 for TEST_FILE in $ANDROID_TESTS; do
@@ -129,7 +141,11 @@ for TEST_FILE in $ANDROID_TESTS; do
     
     echo "Running: $FULL_TEST_NAME"
     
-    ./gradlew :${MODULE}:testDebugUnitTest --tests "$FULL_TEST_NAME" 2>&1 | tee /tmp/ut_${TEST_CLASS}.log
+    # Enable JaCoCo coverage
+    ./gradlew :${MODULE}:testDebugUnitTest \
+        --tests "$FULL_TEST_NAME" \
+        jacocoTestReport \
+        2>&1 | tee /tmp/ut_${TEST_CLASS}.log
     
     if [ $? -eq 0 ]; then
         echo "✅ $TEST_CLASS: passed"
@@ -139,7 +155,7 @@ for TEST_FILE in $ANDROID_TESTS; do
 done
 ```
 
-#### C++ Tests
+#### C++ Tests (with Coverage)
 
 ```bash
 for TEST_FILE in $CPP_TESTS; do
@@ -152,10 +168,16 @@ for TEST_FILE in $CPP_TESTS; do
     echo "Building and running: $TEST_NAME"
     
     cd "$MODULE_PATH"
-    cmake -B build -DCMAKE_BUILD_TYPE=Debug
+    # Build with coverage flags
+    cmake -B build -DCMAKE_BUILD_TYPE=Debug \
+        -DCMAKE_CXX_FLAGS="--coverage" \
+        -DCMAKE_C_FLAGS="--coverage"
     cmake --build build --target $TEST_NAME
     
     ./build/tests/$TEST_NAME 2>&1 | tee /tmp/ut_${TEST_NAME}.log
+    
+    # Generate coverage report
+    gcov -r $(find build -name "*.gcda") 2>/dev/null
     
     if [ $? -eq 0 ]; then
         echo "✅ $TEST_NAME: passed"
@@ -165,40 +187,136 @@ for TEST_FILE in $CPP_TESTS; do
 done
 ```
 
-### Step 5: Generate Summary Report
+### Step 5: Collect Coverage Data
+
+**⚠️ CRITICAL: This step MUST execute - coverage data is REQUIRED**
+
+#### iOS Coverage Collection
+
+```bash
+# Extract coverage from xcresult bundle
+for RESULT_BUNDLE in /tmp/ut_*_result.xcresult; do
+    if [ -d "$RESULT_BUNDLE" ]; then
+        TEST_NAME=$(basename "$RESULT_BUNDLE" _result.xcresult)
+        
+        # Get coverage report using xcrun xccov
+        xcrun xccov view --report "$RESULT_BUNDLE" > /tmp/${TEST_NAME}_coverage.txt 2>/dev/null
+        
+        # Extract file-level coverage for the source file
+        # Look for the source file that matches the test class
+        SOURCE_FILE=$(echo "$TEST_NAME" | sed 's/Tests$//')
+        
+        # Parse coverage data
+        LINE_COVERAGE=$(xcrun xccov view --report "$RESULT_BUNDLE" 2>/dev/null | \
+            grep -A5 "${SOURCE_FILE}" | \
+            grep -oE "[0-9]+\.[0-9]+%" | head -1)
+        
+        # Get branch coverage (from detailed report)
+        xcrun xccov view --report --json "$RESULT_BUNDLE" 2>/dev/null > /tmp/${TEST_NAME}_coverage.json
+        
+        # Parse JSON for branch coverage
+        BRANCH_COVERAGE=$(cat /tmp/${TEST_NAME}_coverage.json | \
+            grep -oE '"branchCoverage":[0-9.]+' | head -1 | \
+            sed 's/"branchCoverage"://' | \
+            awk '{printf "%.1f%%", $1 * 100}')
+        
+        echo "Coverage for ${SOURCE_FILE}: Line=${LINE_COVERAGE:-N/A}, Branch=${BRANCH_COVERAGE:-N/A}"
+    fi
+done
+```
+
+#### Alternative iOS Coverage (using llvm-cov)
+
+```bash
+# If xcresult doesn't provide detailed coverage, use llvm-cov
+PROFDATA=$(find ~/Library/Developer/Xcode/DerivedData -name "*.profdata" -newer /tmp/ut_*.log | head -1)
+BINARY=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xctest" -type d -newer /tmp/ut_*.log | head -1)
+
+if [ -n "$PROFDATA" ] && [ -n "$BINARY" ]; then
+    xcrun llvm-cov report "${BINARY}/Contents/MacOS/*" -instr-profile="$PROFDATA" \
+        --ignore-filename-regex=".*/Tests/.*" 2>/dev/null | tee /tmp/llvm_coverage.txt
+fi
+```
+
+#### Android Coverage Collection
+
+```bash
+# JaCoCo report location
+JACOCO_REPORT=$(find . -path "**/reports/jacoco/**/jacocoTestReport.xml" | head -1)
+
+if [ -f "$JACOCO_REPORT" ]; then
+    # Parse JaCoCo XML for coverage
+    LINE_COVERAGE=$(grep -oE 'LINE[^>]*covered="[0-9]+"' "$JACOCO_REPORT" | \
+        awk -F'"' '{c+=$2; m+=$4} END {printf "%.1f%%", (c/(c+m))*100}')
+    
+    BRANCH_COVERAGE=$(grep -oE 'BRANCH[^>]*covered="[0-9]+"' "$JACOCO_REPORT" | \
+        awk -F'"' '{c+=$2; m+=$4} END {printf "%.1f%%", (c/(c+m))*100}')
+    
+    echo "Android Coverage: Line=${LINE_COVERAGE}, Branch=${BRANCH_COVERAGE}"
+fi
+```
+
+#### C++ Coverage Collection
+
+```bash
+# Use gcov/lcov for C++ coverage
+lcov --capture --directory build --output-file /tmp/coverage.info 2>/dev/null
+lcov --remove /tmp/coverage.info '/usr/*' --output-file /tmp/coverage_filtered.info 2>/dev/null
+
+# Generate summary
+LINE_COVERAGE=$(lcov --summary /tmp/coverage_filtered.info 2>&1 | grep "lines" | grep -oE "[0-9.]+%")
+BRANCH_COVERAGE=$(lcov --summary /tmp/coverage_filtered.info 2>&1 | grep "branches" | grep -oE "[0-9.]+%")
+
+echo "C++ Coverage: Line=${LINE_COVERAGE:-N/A}, Branch=${BRANCH_COVERAGE:-N/A}"
+```
+
+### Step 6: Generate Summary Report WITH Coverage
+
+**⚠️ CRITICAL: Report MUST include both Branch Coverage and Code Coverage**
 
 ```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 ut_run Summary
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Platform   │ Files │ Tests │ Passed │ Failed
-───────────┼───────┼───────┼────────┼────────
-iOS        │   X   │  XXX  │  XXX   │   X
-Android    │   X   │   XX  │   XX   │   X
-C++        │   X   │   XX  │   XX   │   X
-───────────┼───────┼───────┼────────┼────────
-Total      │   X   │  XXX  │  XXX   │   X
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Platform   │ Files │ Tests │ Passed │ Failed │ Code Coverage │ Branch Coverage
+───────────┼───────┼───────┼────────┼────────┼───────────────┼────────────────
+iOS        │   X   │  XXX  │  XXX   │   X    │   XX.X%       │    XX.X%
+Android    │   X   │   XX  │   XX   │   X    │   XX.X%       │    XX.X%
+C++        │   X   │   XX  │   XX   │   X    │   XX.X%       │    XX.X%
+───────────┼───────┼───────┼────────┼────────┼───────────────┼────────────────
+Total      │   X   │  XXX  │  XXX   │   X    │   XX.X%       │    XX.X%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⏱️ Total Time: XXX.Xs
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📈 Coverage Details by File:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Test Class                    │ Source File             │ Line    │ Branch
+──────────────────────────────┼─────────────────────────┼─────────┼────────
+ConferenceInteractorTests     │ ConferenceInteractor    │  XX.X%  │  XX.X%
+UserServiceTest               │ UserService             │  XX.X%  │  XX.X%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Coverage Target: 100% Line, 100% Branch
+📊 Status: [PASS/FAIL based on coverage]
 ```
 
-## Progress Display Format
+## Progress Display Format (6 Steps)
 
 ```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 ut_run Progress (Step X/5)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 ut_run Progress (Step X/6)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [✅] Step 1: Detect Changed UT Files     (X.Xs)
 [✅] Step 2: Group by Platform           (X.Xs)
-[🔄] Step 3: iOS Pre-build               (in progress...)
-     Running: make ios_install_with_binary_cache
-     [=====>                    ] 25%
-[ ] Step 4: Run Tests
-[ ] Step 5: Report Results
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[✅] Step 3: iOS Pre-build               (X.Xs)
+[🔄] Step 4: Run Tests with Coverage     (in progress...)
+     Running: ConferenceInteractorTests
+[ ] Step 5: Collect Coverage Data
+[ ] Step 6: Generate Report
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⏱️ Elapsed: XX.Xs
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ## Error Handling
@@ -207,24 +325,36 @@ Total      │   X   │  XXX  │  XXX   │   X
 
 If `make ios_install_with_binary_cache` fails:
 
-1. **DO NOT proceed** with iOS tests
+1. **Log the error** but DO NOT stop completely
 2. Display error message with log location
 3. Suggest running `make ios_install_with_source` as alternative
-4. Continue with Android/C++ tests if any
+4. **TRY to continue** with existing build (may work if dependencies installed)
+5. Continue with Android/C++ tests if any
 
 ### Test Failure
 
 If any test fails:
 
-1. Continue running remaining tests
-2. Collect all failures
+1. **Continue running** remaining tests
+2. **Still collect coverage** for passed tests
 3. Display summary with failed test details
-4. Return non-zero exit code
+4. Return non-zero exit code at end
+
+### Coverage Collection Failure
+
+If coverage data unavailable:
+
+1. **Report "N/A"** for coverage metrics
+2. **DO NOT skip** the coverage step
+3. Document reason for missing coverage
+4. **Still complete** Step 6 (Generate Report)
 
 ## Key Rules
 
-1. **iOS Pre-build is MANDATORY** - Never run iOS tests without completing `make ios_install_with_binary_cache`
-2. **Wait for completion** - Monitor the make command output until it finishes
-3. **Handle failures gracefully** - Continue with other platforms if one fails
-4. **Track timing** - Record time for each step
-5. **No skipping** - Run ALL changed UT files, not just a subset
+1. **ALL 6 STEPS MUST EXECUTE** - Never skip any step, even on failures
+2. **iOS Pre-build is MANDATORY** - Attempt make command, continue with existing if fails
+3. **COVERAGE IS REQUIRED** - Enable coverage flags, collect data, report results
+4. **Branch + Code Coverage** - Both metrics MUST appear in final report
+5. **Track timing** - Record time for each step
+6. **No skipping** - Run ALL changed UT files, complete ALL workflow steps
+7. **Never end early** - Always generate final report with whatever data is available

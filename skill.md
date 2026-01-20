@@ -186,7 +186,7 @@ TEST_F(ServiceTest, methodName_scenario_expectedResult) {
 
 The `ut_run` command runs all changed UT files (committed and uncommitted) in the current branch.
 
-### ut_run Workflow
+### ut_run Workflow (6 Steps - ALL MUST EXECUTE)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -211,83 +211,100 @@ The `ut_run` command runs all changed UT files (committed and uncommitted) in th
 │  Step 3: iOS Pre-build (if iOS tests exist)                      │
 │  - Run: make ios_install_with_binary_cache                       │
 │  - Wait for completion (monitor output)                          │
-│  - Only proceed after successful completion                      │
+│  - Continue with existing build if make fails                    │
 └─────────────────────┬───────────────────────────────────────────┘
                       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Step 4: Run Tests by Platform                                   │
-│  - iOS: xcodebuild test -only-testing:<TestTarget>/<TestClass>  │
-│  - Android: ./gradlew :module:testDebugUnitTest --tests "..."   │
-│  - C++: cmake --build && ./build/tests/<test>_test              │
+│  Step 4: Run Tests WITH Code Coverage                            │
+│  - iOS: xcodebuild -enableCodeCoverage YES -resultBundlePath    │
+│  - Android: ./gradlew jacocoTestReport                           │
+│  - C++: cmake with --coverage flags                              │
 └─────────────────────┬───────────────────────────────────────────┘
                       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Step 5: Report Results                                          │
+│  Step 5: Collect Coverage Data (REQUIRED)                        │
+│  - iOS: xcrun xccov view --report <xcresult>                     │
+│  - Android: Parse JaCoCo XML report                              │
+│  - C++: gcov/lcov for coverage data                              │
+│  - Extract BOTH line coverage AND branch coverage                │
+└─────────────────────┬───────────────────────────────────────────┘
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Step 6: Generate Report WITH Coverage                           │
 │  - Show passed/failed count per platform                         │
-│  - List failed tests with details                                │
+│  - Show Code Coverage % per platform                             │
+│  - Show Branch Coverage % per platform                           │
 │  - Total execution time                                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### iOS Pre-build Requirement
 
-For iOS tests, `make ios_install_with_binary_cache` MUST complete before running tests:
+For iOS tests, attempt `make ios_install_with_binary_cache` first:
 
 ```bash
-# Step 1: Run make command and wait for completion
-cd app/ios/Glip
+# Step 1: Run make command from project root
+cd /project/root
 make ios_install_with_binary_cache 2>&1 | tee /tmp/ios_install.log
 
 # Step 2: Check exit code
 if [ $? -eq 0 ]; then
     echo "✅ iOS dependencies installed successfully"
 else
-    echo "❌ iOS dependency installation failed"
-    # Show error and stop
-    exit 1
+    echo "⚠️ iOS dependency installation failed, trying with existing build..."
 fi
 
-# Step 3: Only then run xcodebuild tests
-xcodebuild test -workspace Glip.xcworkspace ...
+# Step 3: Run xcodebuild tests with coverage
+xcodebuild test -workspace Glip.xcworkspace \
+    -enableCodeCoverage YES \
+    -resultBundlePath /tmp/test_result.xcresult ...
 ```
 
-### Example ut_run Usage
+### Example ut_run Usage (with Coverage)
 
 ```
 User: ut_run
 
 AI: 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 ut_run Progress
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 ut_run Progress (6/6)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [✅] Step 1: Detect Changed UT Files     (2.1s)
-     Found 5 changed test files:
-     - iOS: 3 files
-     - Android: 1 file
-     - C++: 1 file
+     Found 5 changed test files
 
-[🔄] Step 2: iOS Pre-build               (in progress...)
-     Running: make ios_install_with_binary_cache
-     ...
-[✅] Step 2: iOS Pre-build               (45.2s)
+[✅] Step 2: Group by Platform           (0.1s)
+     iOS: 3 files, Android: 1 file, C++: 1 file
 
-[🔄] Step 3: Run iOS Tests               (in progress...)
-     Running 3 test classes...
-[✅] Step 3: Run iOS Tests               (120.5s)
+[✅] Step 3: iOS Pre-build               (45.2s)
+     ✅ make ios_install_with_binary_cache completed
+
+[✅] Step 4: Run Tests with Coverage     (120.5s)
      ✅ ConferenceInteractorTests: 75 passed
      ✅ CallManagerTests: 42 passed
      ✅ VoIPServiceTests: 28 passed
-
-[✅] Step 4: Run Android Tests           (15.3s)
      ✅ UserServiceTest: 12 passed
-
-[✅] Step 5: Run C++ Tests               (8.7s)
      ✅ config_parser_test: 18 passed
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[✅] Step 5: Collect Coverage Data       (5.3s)
+     Coverage data collected for all platforms
+
+[✅] Step 6: Generate Report             (complete)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 ut_run Summary
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Platform   │ Files │ Tests │ Passed │ Failed │ Code Coverage │ Branch Coverage
+───────────┼───────┼───────┼────────┼────────┼───────────────┼────────────────
+iOS        │   3   │  145  │  145   │   0    │    92.5%      │    87.3%
+Android    │   1   │   12  │   12   │   0    │    88.0%      │    82.5%
+C++        │   1   │   18  │   18   │   0    │    95.0%      │    90.0%
+───────────┼───────┼───────┼────────┼────────┼───────────────┼────────────────
+Total      │   5   │  175  │  175   │   0    │    91.8%      │    86.6%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✅ All 175 tests passed!
 ⏱️ Total Time: 191.8s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ## Notes

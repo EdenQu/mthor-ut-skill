@@ -1,6 +1,6 @@
 {
   "name": "mthor-ut-skill",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Professional Unit Test Skill for Cursor IDE - Multi-platform UT generation with auto error fixing",
   "main": "index.js",
   "keywords": [
