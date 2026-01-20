@@ -1,0 +1,92 @@
+---
+description: UT Skill Trigger - Activates unit test workflow on ut_* commands
+globs:
+alwaysApply: true
+---
+
+# UT Skill Trigger
+
+When user input matches any of these command patterns, activate the UT Skill workflow:
+
+## Command Patterns
+
+| Pattern | Description |
+|---------|-------------|
+| `ut_changed` | Generate UT for git changed files |
+| `ut_changed --base=<branch>` | Compare with specific base branch |
+| `ut_path --path=<dir>` | Generate UT for directory |
+| `ut_files --files="<files>"` | Generate UT for specific files |
+
+## Activation Rules
+
+When ANY of these patterns are detected in user input:
+
+```regex
+^ut_changed(\s+.*)?$
+^ut_path\s+(--)?path=.+
+^ut_files\s+(--)?files=.+
+```
+
+## Workflow Execution
+
+Upon activation, execute the complete UT Skill workflow:
+
+### 1. Parse Command
+Read `.cursor/skills/ut-skill/prompts/<command>.md` for command-specific instructions.
+
+### 2. Analyze Files
+Follow `.cursor/skills/ut-skill/workflow.md` for file analysis steps.
+
+### 3. Generate Tests
+Follow platform-specific rules from `.cursor/rules/unit-test/`:
+- iOS: `ios-unit-test.mdc`
+- Android: `android-unit-test.mdc`
+- C++: `cpp-unit-test.mdc`
+
+### 4. Build & Run
+- For iOS: Prompt user to choose build method
+- Execute tests and collect coverage
+
+### 5. Report Coverage
+Output formatted coverage report with line and branch coverage.
+
+## Key Requirements
+
+1. **100% Coverage**: All generated tests must achieve 100% branch and code coverage
+2. **No Duplicates**: Check existing tests before creating new ones
+3. **Update Mode**: Modify existing tests rather than recreating
+4. **Platform Rules**: Strictly follow `.cursor/rules/unit-test/*` guidelines
+5. **Reference Patterns**: Find similar tests in the same module for consistency
+
+## ⚠️ Critical Workflow Rules
+
+1. **NEVER End Conversation**: Do NOT terminate after any step, workflow continues
+2. **Complete ALL Steps**: Execute entire workflow (Steps 1-11) without interruption
+3. **Non-Blocking Prompts**: When user choice needed, wait for input then continue
+4. **Track Progress**: Monitor and display time for each step
+5. **Partial Coverage**: For `ut_changed` with no existing UT, only cover changed methods
+
+## Quick Reference
+
+```
+# Analyze branch changes (default: origin/dev)
+ut_changed
+
+# Analyze with specific base branch
+ut_changed --base=origin/main
+
+# Test specific directory
+ut_path --path=phone/ios/Phone/Service
+
+# Test specific files
+ut_files --files="PhoneService.swift,CallManager.swift"
+```
+
+## Important Notes
+
+- Default base branch is `origin/dev` (remote branch)
+- Always fetches latest remote before comparison to avoid stale local branch issues
+- Use `origin/` prefix for remote branches (e.g., `origin/dev`, `origin/main`)
+- Workflow must complete all 11 steps without terminating conversation
+- User choices should pause (not end) workflow, then continue after response
+- Progress and timing should be tracked and displayed for each step

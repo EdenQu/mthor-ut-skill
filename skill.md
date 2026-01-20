@@ -1,0 +1,202 @@
+---
+name: mthor-ut-skill
+description: Professional Unit Test generation skill for iOS, Android, and C++ with auto error fixing and reference-first workflow
+version: 1.0.0
+author: eden_qu
+tags:
+  - unit-test
+  - testing
+  - ios
+  - android
+  - cpp
+  - swift
+  - kotlin
+  - test-generation
+  - code-quality
+requires: []
+---
+
+# MThor UT Skill
+
+Professional Unit Test generation skill for Cursor IDE supporting iOS (Swift/XCTest), Android (Kotlin/JUnit), and C++ (GoogleTest/GMock).
+
+## Overview
+
+This skill automates unit test generation with:
+- Multi-platform support (iOS, Android, C++)
+- 8-type compilation error classification and auto-fix
+- Reference-first workflow (learn from existing passing tests)
+- 100% branch and code coverage target
+- Smart partial coverage for changed methods only
+
+## When to Use
+
+Use this skill when you need to:
+- Generate unit tests for changed files in a git branch
+- Create comprehensive tests for a specific directory
+- Add tests for specific source files
+- Ensure 100% test coverage for your code
+
+## Commands
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `ut_changed` | Generate UT for git changed files | `ut_changed --base=origin/dev` |
+| `ut_path` | Generate UT for files in specified path | `ut_path --path=phone/ios/Phone/Service` |
+| `ut_files` | Generate UT for specific files | `ut_files --files="UserService.swift,AuthManager.swift"` |
+
+## Process
+
+### Phase 1: File Analysis
+- Detect changed files using git diff
+- Filter by platform (iOS/Android/C++)
+- Map source files to test file locations
+
+### Phase 2: Reference Existing Tests
+- **CRITICAL**: Always search existing passing tests first
+- Copy exact patterns for imports, mocks, stubs
+- Match naming conventions from similar tests
+
+### Phase 3: Test Generation
+- Generate tests following AAA pattern (Arrange-Act-Assert)
+- Cover all branches and edge cases
+- For `ut_changed` with no existing UT: only cover changed methods
+
+### Phase 4: Compilation & Fix
+- Compile test files to verify syntax
+- Auto-classify and fix 8 types of compilation errors:
+  1. Module Not Found → Add import
+  2. Type Not Found → Fix type name
+  3. Member Not Found → Check API
+  4. Method Signature → Fix params
+  5. Mock Issues → Fix stub syntax
+  6. Access Control → Use @testable
+  7. Protocol Conformance → Implement methods
+  8. Type Mismatch → Fix type cast
+
+### Phase 5: Run & Report
+- Execute tests and verify all pass
+- Generate coverage report
+
+## Output Format
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Coverage Report for <ClassName>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 File: <file_path>
+📈 Line Coverage:   XX.X% (XX/XX lines)
+🌿 Branch Coverage: XX.X% (XX/XX branches)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Meets 100% coverage requirement: [YES/NO]
+```
+
+## Examples
+
+### Example 1: Generate tests for changed files
+
+```
+User: ut_changed --base=origin/dev
+
+AI: Analyzing changes against origin/dev...
+Found 5 changed files:
+- UserService.swift (iOS)
+- AuthManager.kt (Android)
+- config_parser.cpp (C++)
+
+Generating tests with 100% coverage...
+[Progress tracking displayed]
+All tests passed! Coverage: 100%
+```
+
+### Example 2: Generate tests for a directory
+
+```
+User: ut_path --path=phone/ios/Phone/Telephony
+
+AI: Scanning directory...
+Found 12 source files.
+Checking existing tests...
+3 files need new tests, 5 files need updated tests.
+
+Generating tests...
+[Compilation error detected]
+Fixing: Type 'MockCallService' not found
+→ Searching passing tests for correct pattern...
+→ Found in CallManagerTests.swift, applying fix...
+
+All tests passed!
+```
+
+## Platform-Specific Templates
+
+### iOS (Swift/XCTest)
+```swift
+import XCTest
+@testable import YourModule
+
+final class ServiceTests: XCBaseTestCase {
+    private var sut: Service!
+    
+    override func setUp() {
+        super.setUp()
+        sut = Service()
+    }
+    
+    func test_methodName_scenario_expectedResult() {
+        // Arrange
+        // Act
+        // Assert
+    }
+}
+```
+
+### Android (Kotlin/JUnit)
+```kotlin
+@RunWith(RobolectricTestRunner::class)
+class ServiceTest : BaseRobolectricTest() {
+    private lateinit var sut: Service
+    private val mockDep: Dependency = docker()
+    
+    @Test
+    fun testMethodName_scenario_expectedResult() {
+        // Arrange
+        // Act
+        // Assert
+    }
+}
+```
+
+### C++ (GoogleTest)
+```cpp
+class ServiceTest : public InitGlipCoreTest {
+protected:
+    std::shared_ptr<Service> m_sut;
+};
+
+TEST_F(ServiceTest, methodName_scenario_expectedResult) {
+    // Arrange
+    // Act
+    // Assert
+}
+```
+
+## Notes
+
+- Always reference existing passing tests before writing new code
+- When fixing errors, prioritize patterns from passing test cases
+- The skill tracks progress and timing for each workflow step
+- Compilation errors are never skipped - always analyzed and fixed
+
+## Installation
+
+```bash
+npm install mthor-ut-skill
+```
+
+Or copy skill files to `.cursor/skills/ut-skill/` directory.
+
+## Links
+
+- npm: https://www.npmjs.com/package/mthor-ut-skill
+- Author: eden_qu

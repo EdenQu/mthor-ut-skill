@@ -1,0 +1,49 @@
+{
+  "name": "mthor-ut-skill",
+  "version": "1.1.0",
+  "description": "Professional Unit Test Skill for Cursor IDE - Multi-platform UT generation with auto error fixing",
+  "main": "index.js",
+  "keywords": [
+    "cursor",
+    "cursor-skill",
+    "unit-test",
+    "testing",
+    "ios",
+    "android",
+    "cpp",
+    "swift",
+    "kotlin",
+    "test-generation"
+  ],
+  "author": "eden_qu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EdenQu/mthor-ut-skill"
+  },
+  "homepage": "https://github.com/EdenQu/mthor-ut-skill#readme",
+  "bugs": {
+    "url": "https://github.com/EdenQu/mthor-ut-skill/issues"
+  },
+  "files": [
+    "skill.md",
+    "workflow.md",
+    "trigger.mdc",
+    "README.md",
+    "prompts/",
+    "templates/"
+  ],
+  "cursor": {
+    "type": "skill",
+    "triggers": [
+      "ut_changed",
+      "ut_path",
+      "ut_files"
+    ],
+    "platforms": [
+      "ios",
+      "android",
+      "cpp"
+    ]
+  }
+}
